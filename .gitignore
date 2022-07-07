@@ -1,0 +1,11 @@
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.idea/
+.vscode/
+*.class
+*.jar
+*.log
+.DS_Store
