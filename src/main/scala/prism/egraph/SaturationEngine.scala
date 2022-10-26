@@ -16,8 +16,9 @@ final case class SaturationReport(
  */
 final class SaturationEngine(
   val rules: List[Rewrite],
-  val maxIterations: Int = 30,
-  val nodeLimit: Int = 50000
+  val maxIterations: Int = 15,
+  val nodeLimit: Int = 10000,
+  val matchLimitPerRule: Int = 200
 ) {
   def saturate(egraph: EGraph): SaturationReport = {
     val startTime = System.currentTimeMillis()
@@ -30,7 +31,7 @@ final class SaturationEngine(
       // 1. Match phase: find all matches for all rewrite rules
       val matchesWithRule = mutable.ArrayBuffer[(Rewrite, Match)]()
       for (rule <- rules) {
-        val matches = EMatcher.search(egraph, rule.lhs)
+        val matches = EMatcher.search(egraph, rule.lhs).take(matchLimitPerRule)
         for (m <- matches) {
           matchesWithRule += ((rule, m))
         }

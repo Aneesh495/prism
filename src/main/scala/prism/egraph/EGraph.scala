@@ -110,7 +110,8 @@ final class EGraph extends Serializable {
         getClass(canonicalId).foreach { eclass =>
           // 1. Canonicalize all parent nodes
           val newParents = mutable.ArrayBuffer[(ENode, EClassId)]()
-          for ((pNode, pClass) <- eclass.parents) {
+          val parentsSnapshot = eclass.parents.toList
+          for ((pNode, pClass) <- parentsSnapshot) {
             memo.remove(pNode)
             val canonicalParent = pNode.canonicalize(unionFind)
             val canonicalPClass = find(pClass)
@@ -129,7 +130,7 @@ final class EGraph extends Serializable {
           eclass.parents ++= newParents.distinct
 
           // 2. Canonicalize nodes inside this eclass
-          val canonicalNodes = eclass.nodes.map(_.canonicalize(unionFind))
+          val canonicalNodes = eclass.nodes.toList.map(_.canonicalize(unionFind))
           eclass.nodes.clear()
           eclass.nodes ++= canonicalNodes
         }
