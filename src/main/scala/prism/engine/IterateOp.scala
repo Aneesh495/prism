@@ -42,7 +42,8 @@ final class IterateOp[R: Semiring](
       for (batch <- pendingBase) {
         // Feed into the loop body (output 0) and also emit to exit (output 1)
         results += ((0, batch))
-        results += ((1, batch))
+        val baseExitDeltas = batch.entries.map(d => Delta(d.data, d.timestamp.withDim(iterationDimension, 0L), d.weight))
+        results += ((1, Batch.fromUnsorted(baseExitDeltas)))
       }
       pendingBase.clear()
     }
@@ -66,8 +67,9 @@ final class IterateOp[R: Semiring](
           val advancedBatch = Batch.fromUnsorted(advancedDeltas.toArray)
           // Recirculate to loop body
           results += ((0, advancedBatch))
-          // Also record in exit stream
-          results += ((1, advancedBatch))
+          // Also record in exit stream with collapsed iteration dimension
+          val exitDeltas = advancedDeltas.map(d => Delta(d.data, d.timestamp.withDim(iterationDimension, 0L), d.weight))
+          results += ((1, Batch.fromUnsorted(exitDeltas.toArray)))
         }
       }
       pendingFeedback.clear()

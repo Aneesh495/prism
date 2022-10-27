@@ -26,6 +26,14 @@ final class Timestamp private (val coords: Array[Long]) extends Serializable {
     Timestamp.fromArray(next)
   }
 
+  def withDim(dim: Int, value: Long): Timestamp = {
+    val newLen = math.max(coords.length, dim + 1)
+    val next = new Array[Long](newLen)
+    System.arraycopy(coords, 0, next, 0, coords.length)
+    next(dim) = value
+    Timestamp.fromArray(next)
+  }
+
   /**
    * Partial order comparison: a <= b iff for all i, a(i) <= b(i).
    */

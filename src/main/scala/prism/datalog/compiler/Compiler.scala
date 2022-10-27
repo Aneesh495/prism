@@ -46,7 +46,7 @@ final class CompiledDatalog(
     currentEpoch += 1
     val delta = Delta(values, Timestamp(currentEpoch), weight)
     val batch = Batch.single[Tuple, Long](values, Timestamp(currentEpoch), weight)(using summon[Ordering[Tuple]], DiffInt.diffIntGroup)
-    reactor.insertInput(predicate, batch)
+    reactor.insertInput(s"src_$predicate", batch)
     reactor.stepUntilQuiescence()
   }
 
@@ -56,7 +56,7 @@ final class CompiledDatalog(
   def retractFact(predicate: String, values: Tuple, weight: Long = 1L): Unit = synchronized {
     currentEpoch += 1
     val batch = Batch.single[Tuple, Long](values, Timestamp(currentEpoch), -weight)(using summon[Ordering[Tuple]], DiffInt.diffIntGroup)
-    reactor.insertInput(predicate, batch)
+    reactor.insertInput(s"src_$predicate", batch)
     reactor.stepUntilQuiescence()
   }
 }
@@ -131,10 +131,10 @@ object Compiler {
 
             if (!isRuleRec) {
               // Base rule: route into loop entry port 0
-              compileRuleToTarget(rule, graph, nextOpId, loopOp.id, 0)
+              compileRuleToTarget(rule, graph, nextOpId, loopOp.id, 0, None)
             } else {
-              // Recursive rule: route into loop feedback port 1
-              compileRuleToTarget(rule, graph, nextOpId, loopOp.id, 1)
+              // Recursive rule: route into loop feedback port 1, reading headPred from loopOp
+              compileRuleToTarget(rule, graph, nextOpId, loopOp.id, 1, Some(loopOp.id))
             }
           }
         }
@@ -161,7 +161,7 @@ object Compiler {
     graph: DataflowGraph[Long],
     nextOpId: String => String
   ): Unit = {
-    compileRuleToTarget(rule, graph, nextOpId, rule.head.predicate, 0)
+    compileRuleToTarget(rule, graph, nextOpId, rule.head.predicate, 0, None)
   }
 
   private def compileRuleToTarget(
@@ -169,7 +169,8 @@ object Compiler {
     graph: DataflowGraph[Long],
     nextOpId: String => String,
     targetOpId: String,
-    targetPort: Int
+    targetPort: Int,
+    loopOpId: Option[String]
   ): Unit = {
     val positiveAtoms = rule.body.collect { case p: PositiveAtom => p }
     val negatedAtoms = rule.body.collect { case n: NegatedAtom => n }
@@ -188,8 +189,11 @@ object Compiler {
       case other => "_"
     }.toArray
 
-    var currentOpId = s"src_${firstAtom.predicate}"
-    var currentPort = 0
+    var (currentOpId, currentPort) = if (loopOpId.isDefined && firstAtom.predicate == rule.head.predicate) {
+      (loopOpId.get, 0)
+    } else {
+      (s"src_${firstAtom.predicate}", 0)
+    }
 
     // Filter constants in first atom if any
     val constFilters = firstAtom.terms.zipWithIndex.collect {
@@ -225,7 +229,13 @@ object Compiler {
       )
       graph.addOperator(joinOp)
       graph.addEdge(currentOpId, currentPort, joinOp.id, 0)
-      graph.addEdge(s"src_${atom.predicate}", 0, joinOp.id, 1)
+
+      val (atomSourceId, atomSourcePort) = if (loopOpId.isDefined && atom.predicate == rule.head.predicate) {
+        (loopOpId.get, 0)
+      } else {
+        (s"src_${atom.predicate}", 0)
+      }
+      graph.addEdge(atomSourceId, atomSourcePort, joinOp.id, 1)
 
       // Update schema: current schema + non-key columns of B
       val bNonKeyVars = atomVarSchema.zipWithIndex.filterNot { case (_, idx) => keyIndicesB.contains(idx) }.map(_._1)
