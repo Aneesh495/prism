@@ -8,7 +8,7 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * Aggregation function descriptor defining the reduction logic over group values.
  */
-sealed trait AggFunction {
+trait AggFunction {
   def name: String
   def compute(values: Iterable[(Tuple, Long)]): Option[Datum]
 }
