@@ -31,45 +31,45 @@ final class Reactor[R: Semiring](val graph: DataflowGraph[R]) {
   }
 
   /**
-   * Advances the dataflow until all pending operator queues are empty (quiescence).
-   * Returns the total number of evaluation micro-steps performed.
+   * Executes a single pass over all operators with pending work, routing batches.
+   * Returns true if any operator performed work and emitted batches.
    */
-  def stepUntilQuiescence(maxSteps: Int = 100000): Int = synchronized {
-    var stepCount = 0
-    var active = true
+  def stepSinglePass(): Boolean = synchronized {
+    var workDoneInPass = false
+    for (op <- graph.allOperators) {
+      if (op.hasPendingWork) {
+        val emitted = op.step()
+        if (emitted.nonEmpty) {
+          workDoneInPass = true
+          for ((outPort, batch) <- emitted if batch.nonEmpty) {
+            // Record if this operator is marked as an output sink
+            if (graph.outputs.contains(op.id)) {
+              outputBuffers.getOrElseUpdate(op.id, mutable.ArrayBuffer()) += batch
+            }
 
-    while (active && stepCount < maxSteps) {
-      var workDoneInPass = false
-      for (op <- graph.allOperators) {
-        if (op.hasPendingWork) {
-          val emitted = op.step()
-          if (emitted.nonEmpty) {
-            workDoneInPass = true
-            for ((outPort, batch) <- emitted if batch.nonEmpty) {
-              // Record if this operator is marked as an output sink
-              if (graph.outputs.contains(op.id)) {
-                outputBuffers.getOrElseUpdate(op.id, mutable.ArrayBuffer()) += batch
-              }
-
-              // Route along outgoing edges
-              val edges = graph.outgoingEdges(op.id, outPort)
-              for (edge <- edges) {
-                graph.getOperator(edge.toOperatorId).foreach { targetOp =>
-                  targetOp.receive(edge.toPort, batch)
-                }
+            // Route along outgoing edges
+            val edges = graph.outgoingEdges(op.id, outPort)
+            for (edge <- edges) {
+              graph.getOperator(edge.toOperatorId).foreach { targetOp =>
+                targetOp.receive(edge.toPort, batch)
               }
             }
           }
         }
       }
-
-      if (!workDoneInPass) {
-        active = false
-      } else {
-        stepCount += 1
-      }
     }
+    workDoneInPass
+  }
 
+  /**
+   * Advances the dataflow until all pending operator queues are empty (quiescence).
+   * Returns the total number of evaluation micro-steps performed.
+   */
+  def stepUntilQuiescence(maxSteps: Int = 100000): Int = synchronized {
+    var stepCount = 0
+    while (stepSinglePass() && stepCount < maxSteps) {
+      stepCount += 1
+    }
     stepCount
   }
 

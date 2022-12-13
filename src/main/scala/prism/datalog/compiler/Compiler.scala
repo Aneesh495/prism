@@ -35,6 +35,7 @@ final class CompiledDatalog(
    * Queries a specific relation snapshot at the current epoch.
    */
   def query(predicate: String): Set[Tuple] = synchronized {
+    reactor.stepUntilQuiescence()
     val snap = reactor.snapshotAt(predicate, Timestamp(currentEpoch))
     snap.filter(_._2 > 0L).keySet
   }
