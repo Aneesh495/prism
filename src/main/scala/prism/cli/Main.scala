@@ -52,6 +52,60 @@ object Main {
           println("Running Prism Benchmark Suite...")
           prism.bench.BenchmarkRunner.runAll()
 
+        case "examples" =>
+          println("=================================================================")
+          println("               RUNNING PRISM REAL-WORLD EXAMPLES                 ")
+          println("=================================================================")
+
+          println("\n[1/4] Graph Analytics: PageRank Power Iteration")
+          val edges = List((1L, 2L), (2L, 3L), (3L, 1L), (4L, 1L))
+          val ranks = prism.examples.GraphAnalytics.computePageRank(edges, numIterations = 20)
+          for ((node, rank) <- ranks.toSeq.sortBy(-_._2)) {
+            println(f"  * Node $node%d -> PageRank: $rank%.4f")
+          }
+
+          println("\n[2/4] Program Analysis: Andersen Flow-Insensitive Points-To Analysis")
+          val allocs = List(("a", "HeapObj1"), ("c", "HeapObj2"))
+          val assigns = List(("b", "a"), ("d", "c"), ("b", "d"))
+          val pointsTo = prism.examples.PointerAnalysis.analyze(allocs, assigns)
+          for ((variable, targets) <- pointsTo.toSeq.sortBy(_._1)) {
+            println(s"  * Variable '$variable' points to: {${targets.mkString(", ")}}")
+          }
+
+          println("\n[3/4] Financial AML Audit: Provenance Polynomial Taint Tracking")
+          val txs = List(
+            prism.examples.Transaction("tx1", "illicit_account", "shell_a", 50000.0),
+            prism.examples.Transaction("tx2", "shell_a", "shell_b", 48000.0),
+            prism.examples.Transaction("tx3", "shell_b", "merchant_hub", 45000.0)
+          )
+          val taints = prism.examples.FinancialAudit.traceTaint(txs, Set("illicit_account"))
+          for ((acc, poly) <- taints.toSeq.sortBy(_._1)) {
+            println(s"  * Account '$acc' -> Lineage: $poly")
+          }
+
+          println("\n[4/4] Compiler Optimization: E-Graph Equality Saturation")
+          import prism.egraph.Expr._
+          val expr = add(mul(Var("x"), Const(2)), Const(0))
+          val (optExpr, report) = prism.examples.CompilerOptimizations.optimize(expr)
+          println(s"  * Original  : $expr")
+          println(s"  * Optimized : $optExpr (converged in ${report.iterations} iterations)")
+          println("=================================================================")
+
+        case "sql" =>
+          if (args.length < 2) {
+            println("Usage: prism sql \"<SELECT query>\"")
+            System.exit(1)
+          }
+          val sqlText = args(1)
+          val schemas = Map(
+            "users" -> List("id", "name"),
+            "orders" -> List("orderId", "userId", "amount")
+          )
+          val tokens = new prism.sql.SqlLexer(sqlText).tokenize()
+          val ast = new prism.sql.SqlParser(tokens).parseQuery()
+          val rule = prism.sql.SqlToDatalog.translate("sql_result", ast, schemas)
+          println(s"Transpiled Datalog Rule:\n  $rule\n")
+
         case "--help" | "-h" | "help" =>
           printUsage()
 
@@ -70,6 +124,8 @@ object Main {
         |  prism repl              Launch interactive REPL (default)
         |  prism run <file> [pred] Compile and execute Datalog file
         |  prism bench             Run micro and macro benchmarks
+        |  prism examples          Run domain showcase examples
+        |  prism sql "<query>"     Transpile SQL query to differential Datalog
         |  prism --help            Show this usage information
       """.stripMargin
     )
